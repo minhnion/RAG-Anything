@@ -15,7 +15,7 @@ import time
 
 from tqdm import tqdm
 
-from .parser import MineruParser, DoclingParser
+from .parser import get_parser
 
 
 @dataclass
@@ -70,7 +70,7 @@ class BatchParser:
         Initialize batch parser
 
         Args:
-            parser_type: Type of parser to use ("mineru" or "docling")
+            parser_type: Type of parser to use ("mineru", "docling", or "paddleocr")
             max_workers: Maximum number of parallel workers
             show_progress: Whether to show progress bars
             timeout_per_file: Timeout in seconds for each file
@@ -87,6 +87,18 @@ class BatchParser:
             self.parser = MineruParser()
         elif parser_type == "docling":
             self.parser = DoclingParser()
+        elif parser_type == "mineru_cloud":
+            from .mineru_cloud import MineruCloudParser
+
+            self.parser = MineruCloudParser()
+        elif parser_type == "kreuzberg":
+            from .parser import KreuzbergParser
+
+            self.parser = KreuzbergParser()
+        elif parser_type == "marker":
+            from .parser import MarkerParser
+
+            self.parser = MarkerParser()
         else:
             raise ValueError(f"Unsupported parser type: {parser_type}")
 
@@ -102,6 +114,13 @@ class BatchParser:
 
     def get_supported_extensions(self) -> List[str]:
         """Get list of supported file extensions"""
+        parser_type = self.parser_type
+        if parser_type == "docling":
+            return list(self.parser.OFFICE_FORMATS | self.parser.HTML_FORMATS | {".pdf"})
+        if parser_type == "mineru_cloud":
+            return list(self.parser.OFFICE_FORMATS | self.parser.IMAGE_FORMATS | self.parser.HTML_FORMATS | {".pdf"})
+        if parser_type in ["kreuzberg", "marker"]:
+            return list(self.parser.IMAGE_FORMATS | {".pdf"})
         return list(
             self.parser.OFFICE_FORMATS
             | self.parser.IMAGE_FORMATS
@@ -384,9 +403,15 @@ def main():
     parser.add_argument("--output", "-o", required=True, help="Output directory")
     parser.add_argument(
         "--parser",
-        choices=["mineru", "docling"],
+        choices=["mineru", "docling", "kreuzberg", "marker"],
         default="mineru",
-        help="Parser to use",
+        help=(
+            "Parser to use. Built-ins: mineru, docling, paddleocr. "
+            "When using RAGAnything as a library, any custom parsers that you "
+            "have registered via register_parser() in the current process "
+            "are also accepted. The standalone CLI itself does not perform "
+            "plugin discovery."
+        ),
     )
     parser.add_argument(
         "--method",

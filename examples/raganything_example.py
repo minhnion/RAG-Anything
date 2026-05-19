@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """
-Example script demonstrating the integration of MinerU parser with RAGAnything
+Example script demonstrating parser integration with RAGAnything
 
 This example shows how to:
-1. Process documents with RAGAnything using MinerU parser
+1. Process documents with RAGAnything using configurable parsers
 2. Perform pure text queries using aquery() method
 3. Perform multimodal queries with specific multimodal content using aquery_with_multimodal() method
 4. Handle different types of multimodal content (tables, equations) in queries
@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import logging
 import logging.config
+from functools import partial
 from pathlib import Path
 
 # Add project root directory to Python path
@@ -37,7 +38,7 @@ def configure_logging():
     log_file_path = os.path.abspath(os.path.join(log_dir, "raganything_example.log"))
 
     print(f"\nRAGAnything example log file: {log_file_path}\n")
-    os.makedirs(os.path.dirname(log_dir), exist_ok=True)
+    os.makedirs(os.path.dirname(log_file_path) or ".", exist_ok=True)
 
     # Get log file max size and backup count from environment variables
     log_max_bytes = int(os.getenv("LOG_MAX_BYTES", 10485760))  # Default 10MB
@@ -108,7 +109,7 @@ async def process_with_rag(
         # Create RAGAnything configuration
         config = RAGAnythingConfig(
             working_dir=working_dir or "./rag_storage",
-            parser=parser,  # Parser selection: mineru or docling
+            parser=parser,  # Parser selection: mineru, docling, or paddleocr
             parse_method="auto",  # Parse method: auto, ocr, or txt
             enable_image_processing=True,
             enable_table_processing=True,
@@ -116,9 +117,12 @@ async def process_with_rag(
         )
 
         # Define LLM model function
+        llm_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        vision_model = os.getenv("VISION_MODEL", "gpt-4o")
+
         def llm_model_func(prompt, system_prompt=None, history_messages=[], **kwargs):
             return openai_complete_if_cache(
-                "gpt-4o-mini",
+                llm_model,
                 prompt,
                 system_prompt=system_prompt,
                 history_messages=history_messages,
@@ -139,7 +143,7 @@ async def process_with_rag(
             # If messages format is provided (for multimodal VLM enhanced query), use it directly
             if messages:
                 return openai_complete_if_cache(
-                    "gpt-4o",
+                    vision_model,
                     "",
                     system_prompt=None,
                     history_messages=[],
@@ -151,7 +155,7 @@ async def process_with_rag(
             # Traditional single image format
             elif image_data:
                 return openai_complete_if_cache(
-                    "gpt-4o",
+                    vision_model,
                     "",
                     system_prompt=None,
                     history_messages=[],
@@ -189,7 +193,7 @@ async def process_with_rag(
         embedding_func = EmbeddingFunc(
             embedding_dim=embedding_dim,
             max_token_size=8192,
-            func=lambda texts: openai_embed(
+            func=lambda texts: openai_embed.func(
                 texts,
                 model=embedding_model,
                 api_key=api_key,
@@ -289,7 +293,13 @@ def main():
     parser.add_argument(
         "--parser",
         default=os.getenv("PARSER", "mineru"),
-        help="Optional base URL for API",
+        help=(
+            "Parser selection. Built-ins: mineru, docling, paddleocr. "
+            "Custom parsers that you register via register_parser() in the "
+            "same Python process are also accepted when using RAGAnything as "
+            "a library. This example script does not perform any automatic "
+            "plugin discovery."
+        ),
     )
 
     args = parser.parse_args()

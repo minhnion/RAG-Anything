@@ -1,0 +1,76 @@
+import argparse
+import asyncio
+import logging
+from pathlib import Path
+
+from _bootstrap import bootstrap_project_root
+
+bootstrap_project_root()
+
+from src.workbench.experiments.retrieval.definitions import RETRIEVAL_EXPERIMENTS
+from src.workbench.experiments.retrieval.runner import RetrievalExperimentRunner
+from src.workbench.logging_utils import configure_workbench_logging
+
+
+def _remove_if_exists(path: Path) -> None:
+    if path.exists():
+        path.unlink()
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="Retrieval benchmark runner")
+    parser.add_argument("--exp", type=str, help="Retrieval experiment ID. If empty, run all retrieval experiments.")
+    parser.add_argument(
+        "--base-exp",
+        type=str,
+        help="Run all retrieval experiments whose base pipeline experiment matches this ID.",
+    )
+    parser.add_argument(
+        "--fresh-report",
+        action="store_true",
+        help="Delete retrieval summary/detail reports before running.",
+    )
+    args = parser.parse_args()
+    configure_workbench_logging(
+        "run_retrieval_bench",
+        args.exp or args.base_exp or "all",
+    )
+
+    reports_dir = Path("benchmark_outputs/reports")
+    if args.fresh_report:
+        _remove_if_exists(reports_dir / "retrieval_benchmark_summary.csv")
+        _remove_if_exists(reports_dir / "retrieval_benchmark_details.jsonl")
+
+    runner = RetrievalExperimentRunner()
+    if args.exp:
+        if args.exp not in RETRIEVAL_EXPERIMENTS:
+            raise SystemExit(f"Unknown retrieval experiment '{args.exp}'. Available: {list(RETRIEVAL_EXPERIMENTS.keys())}")
+        result = await runner.run(RETRIEVAL_EXPERIMENTS[args.exp])
+        logging.info("Completed retrieval benchmark: %s", result)
+        return
+
+    if args.base_exp:
+        selected = [
+            exp_def
+            for exp_def in RETRIEVAL_EXPERIMENTS.values()
+            if exp_def.base_experiment_id == args.base_exp
+        ]
+        if not selected:
+            available = sorted({exp_def.base_experiment_id for exp_def in RETRIEVAL_EXPERIMENTS.values()})
+            raise SystemExit(
+                f"Unknown base pipeline experiment '{args.base_exp}'. Available base experiments: {available}"
+            )
+        await runner.run_many(selected)
+        logging.info(
+            "Completed retrieval benchmark for %d experiments with base pipeline %s",
+            len(selected),
+            args.base_exp,
+        )
+        return
+
+    await runner.run_many(list(RETRIEVAL_EXPERIMENTS.values()))
+    logging.info("Completed retrieval benchmark for %d experiments", len(RETRIEVAL_EXPERIMENTS))
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

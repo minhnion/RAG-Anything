@@ -5,7 +5,8 @@ Contains configuration dataclasses with environment variable support
 """
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Dict, Any
+import json
 from lightrag.utils import get_env_value
 
 
@@ -27,7 +28,18 @@ class RAGAnythingConfig:
     """Default output directory for parsed content."""
 
     parser: str = field(default=get_env_value("PARSER", "mineru", str))
-    """Parser selection: 'mineru' or 'docling'."""
+    """Parser selection: 'mineru', 'mineru_cloud', 'docling', 'kreuzberg', or 'marker'."""
+
+    extract_profile: str = field(
+        default=get_env_value("EXTRACT_PROFILE", "balanced", str)
+    )
+    """Extraction profile: 'fast', 'balanced', 'quality' (maps to parser kwargs)."""
+
+    parser_kwargs_raw: str = field(default=get_env_value("PARSER_KWARGS", "", str))
+    """Raw JSON string of parser kwargs from environment (optional)."""
+
+    parser_kwargs: Dict[str, Any] = field(default_factory=dict)
+    """Parsed parser kwargs (merged with extract_profile defaults)."""
 
     display_content_stats: bool = field(
         default=get_env_value("DISPLAY_CONTENT_STATS", True, bool)
@@ -59,11 +71,14 @@ class RAGAnythingConfig:
     """Maximum number of files to process concurrently."""
 
     supported_file_extensions: List[str] = field(
-        default_factory=lambda: get_env_value(
-            "SUPPORTED_FILE_EXTENSIONS",
-            ".pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.gif,.webp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md",
-            str,
-        ).split(",")
+        default_factory=lambda: [
+            x.strip()
+            for x in get_env_value(
+                "SUPPORTED_FILE_EXTENSIONS",
+                ".pdf,.jpg,.jpeg,.png,.bmp,.tiff,.tif,.gif,.webp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md",
+                str,
+            ).split(",")
+        ]
     )
     """List of supported file extensions for batch processing."""
 
@@ -94,19 +109,29 @@ class RAGAnythingConfig:
     """Whether to include image/table captions in context."""
 
     context_filter_content_types: List[str] = field(
-        default_factory=lambda: get_env_value(
-            "CONTEXT_FILTER_CONTENT_TYPES", "text", str
-        ).split(",")
+        default_factory=lambda: [
+            x.strip()
+            for x in get_env_value("CONTEXT_FILTER_CONTENT_TYPES", "text", str).split(
+                ","
+            )
+        ]
     )
     """Content types to include in context extraction (e.g., 'text', 'image', 'table')."""
 
     content_format: str = field(default=get_env_value("CONTENT_FORMAT", "minerU", str))
     """Default content format for context extraction when processing documents."""
 
-    # Path Handling Configuration
+    # Entity Extraction Limits (for graph size control)
     # ---
-    use_full_path: bool = field(default=get_env_value("USE_FULL_PATH", False, bool))
-    """Whether to use full file path (True) or just basename (False) for file references in LightRAG."""
+    max_entities_per_chunk: int = field(
+        default=get_env_value("MAX_ENTITIES_PER_CHUNK", 0, int)
+    )
+    """Maximum entities to keep per chunk (0 = unlimited). Set to 1 for minimal graphs."""
+
+    max_relations_per_chunk: int = field(
+        default=get_env_value("MAX_RELATIONS_PER_CHUNK", 0, int)
+    )
+    """Maximum relations to keep per chunk (0 = unlimited). Set to 0 for no relations."""
 
     def __post_init__(self):
         """Post-initialization setup for backward compatibility"""
@@ -121,6 +146,36 @@ class RAGAnythingConfig:
                 DeprecationWarning,
                 stacklevel=2,
             )
+
+        # Merge parser kwargs from env JSON (if provided)
+        if self.parser_kwargs_raw:
+            try:
+                parsed = json.loads(self.parser_kwargs_raw)
+                if isinstance(parsed, dict):
+                    self.parser_kwargs.update(parsed)
+            except Exception:
+                # Ignore invalid JSON to avoid breaking runtime
+                pass
+
+    def resolve_parser_kwargs(self) -> Dict[str, Any]:
+        """
+        Resolve effective parser kwargs based on extract_profile + user-provided parser_kwargs.
+        """
+        profile = (self.extract_profile or "balanced").strip().lower()
+        profile_kwargs: Dict[str, Any] = {}
+
+        if profile == "fast":
+            # Speed-first: skip heavy parsing (tables/formulas) if supported by parser
+            profile_kwargs = {"table": False, "formula": False}
+        elif profile == "quality":
+            # Quality-first: explicitly enable tables/formulas if supported
+            profile_kwargs = {"table": True, "formula": True}
+        # balanced -> no changes
+
+        merged: Dict[str, Any] = {}
+        merged.update(profile_kwargs)
+        merged.update(self.parser_kwargs or {})
+        return merged
 
     @property
     def mineru_parse_method(self) -> str:
