@@ -56,6 +56,51 @@ from raganything.asset_urls import attach_public_media_urls
 _IS_WINDOWS: bool = platform.system() == "Windows"
 
 
+SUPPORTED_PARSERS = ["mineru", "mineru_cloud", "docling", "kreuzberg", "marker"]
+_CUSTOM_PARSER_REGISTRY: Dict[str, Any] = {}
+
+
+def register_parser(name: str, parser_factory: Any) -> None:
+    """Register an in-process parser factory for library integrations."""
+    normalized = str(name or "").strip().lower()
+    if not normalized:
+        raise ValueError("Parser name must not be empty.")
+    _CUSTOM_PARSER_REGISTRY[normalized] = parser_factory
+    if normalized not in SUPPORTED_PARSERS:
+        SUPPORTED_PARSERS.append(normalized)
+
+
+def get_parser(name: str | None = None) -> "Parser":
+    """Return a parser instance by id."""
+    parser_name = str(name or "mineru").strip().lower()
+
+    if parser_name in _CUSTOM_PARSER_REGISTRY:
+        factory = _CUSTOM_PARSER_REGISTRY[parser_name]
+        if isinstance(factory, Parser):
+            return factory
+        if isinstance(factory, type):
+            return factory()
+        return factory()
+
+    if parser_name == "mineru":
+        return MineruParser()
+    if parser_name == "mineru_cloud":
+        from raganything.mineru_cloud import MineruCloudParser
+
+        return MineruCloudParser()
+    if parser_name == "docling":
+        return DoclingParser()
+    if parser_name == "kreuzberg":
+        return KreuzbergParser()
+    if parser_name == "marker":
+        return MarkerParser()
+
+    available = ", ".join(SUPPORTED_PARSERS)
+    raise ValueError(
+        f"Unknown parser {parser_name!r}. Available parsers: {available}"
+    )
+
+
 def _split_text_blocks(text: str) -> List[str]:
     """Split text into paragraph-like blocks for content_list."""
     if not text:

@@ -125,6 +125,31 @@ class ProcessorMixin:
         """Return a stable UTC timestamp for doc_status bookkeeping."""
         return time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())
 
+    def _get_file_reference(self, file_path: Any) -> str:
+        """Return the citation/storage file reference used in LightRAG metadata.
+
+        Local upload paths are intentionally collapsed to their basename so graph
+        metadata stays portable across Docker/container paths. Callers can opt
+        into full local paths with config.citation_full_path/use_full_path_in_citation.
+        """
+        if file_path is None:
+            return "unknown_document"
+        value = str(file_path).strip()
+        if not value:
+            return "unknown_document"
+        if "://" in value:
+            return value
+
+        use_full_path = bool(
+            getattr(self.config, "citation_full_path", False)
+            or getattr(self.config, "use_full_path_in_citation", False)
+        )
+        if use_full_path:
+            return value
+
+        name = Path(value).name
+        return name or value
+
     async def _ensure_doc_status_record(
         self,
         doc_id: str,
@@ -401,6 +426,10 @@ class ProcessorMixin:
         Returns:
             tuple[List[Dict[str, Any]], str]: (content_list, doc_id)
         """
+        callback_manager = getattr(self, "callback_manager", None)
+        callback_file = str(file_path)
+        parse_start_time = time.time()
+
         # Use config defaults if not provided
         if output_dir is None:
             output_dir = self.config.parser_output_dir
