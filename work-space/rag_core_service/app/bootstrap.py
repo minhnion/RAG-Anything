@@ -21,10 +21,14 @@ PROJECT_ROOT = WORKSPACE_ROOT.parent
 def bootstrap_runtime() -> None:
     """Expose repo modules and load service/research env files."""
 
-    for path in (PROJECT_ROOT, WORKSPACE_ROOT):
+    # Keep the service package before work-space/app.py. This matters for
+    # uvicorn --reload because the child process inherits sys.path from the
+    # reloader process.
+    for path in (PROJECT_ROOT, WORKSPACE_ROOT, SERVICE_ROOT):
         value = str(path)
-        if value not in sys.path:
-            sys.path.insert(0, value)
+        while value in sys.path:
+            sys.path.remove(value)
+        sys.path.insert(0, value)
 
     # Real process/container environment wins. The repo and service .env files
     # are fallbacks for local development and benchmark defaults.

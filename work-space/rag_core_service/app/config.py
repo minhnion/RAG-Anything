@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     host: str = Field("0.0.0.0", alias="RAG_CORE_HOST")
     port: int = Field(7220, alias="RAG_CORE_PORT")
     data_dir: Path = Field(
-        SERVICE_ROOT / "data",
+        SERVICE_ROOT / ".local-data",
         alias="RAG_CORE_DATA_DIR",
     )
     default_config_path: Path = Field(
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     )
     public_base_url: str = Field("", alias="RAG_CORE_PUBLIC_BASE_URL")
     service_token: str = Field("", alias="RAG_CORE_SERVICE_TOKEN")
-    log_dir: Path = Field(SERVICE_ROOT / "data" / "logs", alias="RAG_CORE_LOG_DIR")
+    log_dir: Path = Field(SERVICE_ROOT / ".local-data" / "logs", alias="RAG_CORE_LOG_DIR")
     log_level: str = Field("INFO", alias="RAG_CORE_LOG_LEVEL")
     log_max_bytes: int = Field(10_485_760, alias="RAG_CORE_LOG_MAX_BYTES")
     log_backup_count: int = Field(10, alias="RAG_CORE_LOG_BACKUP_COUNT")

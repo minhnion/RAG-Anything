@@ -52,18 +52,27 @@ OPENAI_API_KEY=...
 MINERU_API_KEY=...
 ```
 
-Start API from the service directory so `app` resolves to `work-space/rag_core_service/app`, not `work-space/app.py`:
+Use a local-dev data directory that is separate from Docker bind-mounted `data/` directory:
+
+```bash
+RAG_CORE_DATA_DIR=./.local-data
+RAG_CORE_LOG_DIR=./.local-data/logs
+```
+
+This avoids permission conflicts after Docker has created files under `work-space/rag_core_service/data/`.
+
+Start API from the service directory so `app` resolves to `work-space/rag_core_service/app`, not `work-space/app.py`. Do not start it from `work-space/`, because `work-space/app.py` is the Streamlit demo and will shadow the API package:
 
 ```bash
 cd work-space/rag_core_service
-uvicorn app.main:app --host 0.0.0.0 --port 7220 --reload
+python -m uvicorn app.main:app --host 0.0.0.0 --port 7220 --reload --reload-dir app --reload-dir config
 ```
 
 If you prefer starting from repo root, set `PYTHONPATH` to the service directory first:
 
 ```bash
 PYTHONPATH=/home/azureuser/minhnion/RAG-Anything/work-space/rag_core_service \
-  uvicorn app.main:app --host 0.0.0.0 --port 7220 --reload
+  python -m uvicorn app.main:app --host 0.0.0.0 --port 7220 --reload --reload-dir work-space/rag_core_service/app --reload-dir work-space/rag_core_service/config
 ```
 
 Health:
@@ -148,7 +157,15 @@ The service never exposes local filesystem paths in graph display payloads.
 
 ## Logs
 
-The service writes rotating process logs and per-job logs under:
+For local dev, the service writes rotating process logs and per-job logs under:
+
+```text
+work-space/rag_core_service/.local-data/logs/
+  rag_core_service.log
+  jobs/<job_id>.log
+```
+
+For Docker, the same paths live under the container `/data/logs`, mounted to:
 
 ```text
 work-space/rag_core_service/data/logs/
@@ -158,11 +175,11 @@ work-space/rag_core_service/data/logs/
 
 You can override this with `RAG_CORE_LOG_DIR` in `.env`.
 
-Useful commands:
+Useful local-dev commands:
 
 ```bash
-tail -f work-space/rag_core_service/data/logs/rag_core_service.log
-tail -f work-space/rag_core_service/data/logs/jobs/<job_id>.log
+tail -f work-space/rag_core_service/.local-data/logs/rag_core_service.log
+tail -f work-space/rag_core_service/.local-data/logs/jobs/<job_id>.log
 curl http://127.0.0.1:7220/v1/jobs/<job_id>/logs
 ```
 
