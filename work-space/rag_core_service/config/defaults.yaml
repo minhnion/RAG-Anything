@@ -1,0 +1,112 @@
+service:
+  profile: production_quality
+
+parser:
+  default: mineru_cloud
+  parse_method: api
+  model_version: vlm
+  language: en
+  extract_images: true
+  extract_tables: true
+  extract_equations: true
+  poll_interval_sec: 5
+  timeout_sec: 1800
+
+pipeline:
+  graph_builder: llm_entity_relation
+  profile: default
+  max_concurrent_files: 1
+  experimental_ner_re: false
+  lightrag_kwargs: {}
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  vision_model: gpt-4o
+
+embedding:
+  provider: openai
+  model: text-embedding-3-large
+  dim: 3072
+
+retrieval:
+  mode: mix
+  internal_top_k: 50
+  returned_top_k: 10
+  chunk_top_k: 12
+  include_graph_context: true
+  include_multimodal_context: true
+
+reranker:
+  enabled: false
+  default: none
+  profiles:
+    - id: none
+      label: No reranker
+      enabled: false
+    - id: bge_reranker_v2_m3
+      label: BGE reranker v2-m3
+      enabled: false
+
+answer:
+  mode: multimodal_mix
+  response_type: Multiple Paragraphs
+  multimodal: true
+  include_images: true
+  include_tables: true
+  include_equations: true
+  output_blocks: true
+
+pruning:
+  default_profile: baseline_50
+  mutate_database: false
+  cache_by_graph_version: true
+  preserve_media_nodes: true
+  max_media_nodes: 8
+  profiles:
+    - id: baseline_50
+      algorithm: baseline
+      max_nodes: 50
+      label: Degree + PageRank, benchmark-selected default
+    - id: hybrid_50
+      algorithm: hybrid
+      max_nodes: 50
+      label: Community + centrality balanced profile
+    - id: compact_30
+      algorithm: baseline
+      max_nodes: 30
+      label: Compact Canvus view
+    - id: baseline_75
+      algorithm: baseline
+      max_nodes: 75
+      label: Larger dense view
+    - id: media_aware_50
+      algorithm: baseline
+      max_nodes: 50
+      label: Baseline with media widgets preserved in graph response
+
+capabilities:
+  parsers:
+    - id: mineru_cloud
+      label: MinerU Cloud Precision API
+      supported_extensions: [.pdf, .doc, .docx, .ppt, .pptx, .xls, .xlsx, .html, .htm, .png, .jpg, .jpeg]
+    - id: mineru
+      label: MinerU local
+      supported_extensions: [.pdf, .png, .jpg, .jpeg]
+    - id: docling
+      label: Docling
+      supported_extensions: [.pdf, .docx, .pptx, .html]
+    - id: kreuzberg
+      label: Kreuzberg
+      supported_extensions: [.pdf, .png, .jpg, .jpeg]
+  parse_methods: [api, auto, ocr, text, vlm]
+  graph_builders:
+    - llm_entity_relation
+    - medical_llm_entity_relation
+    - experimental_radgraph_xl
+    - experimental_iter_ade
+    - experimental_iter_scierc
+  query_modes: [local, global, hybrid, naive, mix, bypass]
+  rerankers: [none, bge_reranker_v2_m3]
+  answer_modes: [text, multimodal_mix, vlm_enhanced]
+
