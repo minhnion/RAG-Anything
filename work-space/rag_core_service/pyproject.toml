@@ -19,7 +19,16 @@ dependencies = [
   "gsk-raganything",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest>=7.0.0",
+  "httpx>=0.27",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
 
+
+[tool.uv.sources]
+gsk-raganything = { path = "../..", editable = true }
