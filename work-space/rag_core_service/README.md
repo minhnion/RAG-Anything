@@ -1,108 +1,83 @@
 # RAG Core Service
 
-Standalone FastAPI service that wraps the current RAGAnything/LightRAG core for
-Canvus workspaces.
+Standalone FastAPI service that wraps the integrated RAGAnything/LightRAG core for Canvus workspaces.
 
 It owns:
 
-- document parsing through MinerU Cloud or other configured parsers
-- graph/vector/index construction
-- multimodal asset manifests for image/table/equation widgets
-- full/pruned graph APIs for Canvus rendering
-- retrieval and multimodal QA APIs
+- document parsing through MinerU Cloud or other configured parsers;
+- graph/vector/index construction;
+- multimodal asset manifests for image/table/equation nodes;
+- full/pruned graph APIs for web and Canvus rendering;
+- retrieval and multimodal QA APIs;
+- per-workspace data and per-job logs.
 
-The service keeps full graph/index data intact. Pruning only creates a display
-view for Canvus.
+The service keeps full graph/index data intact. Pruning only creates a display view for web/Canvus.
 
 ## Defaults
 
-Defaults live in `config/defaults.yaml`.
-
-The current production-quality default is based on the benchmark conclusions:
+Defaults live in `config/defaults.yaml`. The current production-quality profile is based on benchmark conclusions:
 
 - parser: `mineru_cloud`
+- parse method: `api`
 - graph builder: `llm_entity_relation`
 - LLM provider: `openai`
 - retrieval mode: `mix`
 - answer mode: `multimodal_mix`
 - pruning profile: `baseline_50`
 
-NER/RE backends remain listed as experimental capabilities, not defaults.
+NER/RE graph builders remain experimental capabilities, not defaults.
 
-## Local Run
+## Local Run In This Monorepo
 
-From repo root, activate the intended environment, then install the repo package and the service package there:
+From the repository root:
 
 ```bash
-conda activate gsk-raganything
-pip install -e .
-pip install -e work-space/rag_core_service
+make rag-core
 ```
 
-Then create the service env file:
+Equivalent explicit command:
 
 ```bash
-cp work-space/rag_core_service/.env.example work-space/rag_core_service/.env
+uv run --project apps/rag-anything/work-space/rag_core_service   python -m uvicorn app.main:app   --host 0.0.0.0   --port 7220   --reload   --reload-dir apps/rag-anything/work-space/rag_core_service/app   --reload-dir apps/rag-anything/work-space/rag_core_service/config
 ```
 
-Fill at least:
+`pyproject.toml` uses a local uv source so `gsk-raganything` resolves to `apps/rag-anything`, not a registry/GitHub package.
+
+Create the service env file:
 
 ```bash
+cd apps/rag-anything/work-space/rag_core_service
+cp .env.example .env
+```
+
+Fill the keys required by your selected defaults, normally:
+
+```env
 OPENAI_API_KEY=...
 MINERU_API_KEY=...
-```
-
-Use a local-dev data directory that is separate from Docker bind-mounted `data/` directory:
-
-```bash
 RAG_CORE_DATA_DIR=./.local-data
 RAG_CORE_LOG_DIR=./.local-data/logs
 ```
 
-This avoids permission conflicts after Docker has created files under `work-space/rag_core_service/data/`.
+Use `.local-data` for local dev so Docker-created `data/` files do not cause permission conflicts.
 
-Start API from the service directory so `app` resolves to `work-space/rag_core_service/app`, not `work-space/app.py`. Do not start it from `work-space/`, because `work-space/app.py` is the Streamlit demo and will shadow the API package:
-
-```bash
-cd work-space/rag_core_service
-python -m uvicorn app.main:app --host 0.0.0.0 --port 7220 --reload --reload-dir app --reload-dir config
-```
-
-If you prefer starting from repo root, set `PYTHONPATH` to the service directory first:
-
-```bash
-PYTHONPATH=/home/azureuser/minhnion/RAG-Anything/work-space/rag_core_service \
-  python -m uvicorn app.main:app --host 0.0.0.0 --port 7220 --reload --reload-dir work-space/rag_core_service/app --reload-dir work-space/rag_core_service/config
-```
-
-Health:
+## Smoke Checks
 
 ```bash
 curl http://127.0.0.1:7220/v1/health
-```
-
-Capabilities:
-
-```bash
 curl http://127.0.0.1:7220/v1/capabilities
 ```
 
 Create workspace:
 
 ```bash
-curl -X PUT http://127.0.0.1:7220/v1/workspaces/demo \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"Demo Canvus Workspace","config":{}}'
+curl -X PUT http://127.0.0.1:7220/v1/workspaces/demo   -H 'Content-Type: application/json'   -d '{"name":"Demo Canvus Workspace","config":{}}'
 ```
 
 Upload and ingest:
 
 ```bash
-curl -X POST http://127.0.0.1:7220/v1/workspaces/demo/documents:ingest \
-  -F file=@/path/to/document.pdf \
-  -F document_id=doc_001 \
-  -F filename=document.pdf \
-  -F source=canvus
+curl -X POST http://127.0.0.1:7220/v1/workspaces/demo/documents:ingest   -F file=@/path/to/document.pdf   -F document_id=doc_001   -F filename=document.pdf   -F source=canvus
 ```
 
 Poll job:
@@ -111,7 +86,7 @@ Poll job:
 curl http://127.0.0.1:7220/v1/jobs/<job_id>
 ```
 
-Get pruned graph for Canvus:
+Get pruned graph:
 
 ```bash
 curl 'http://127.0.0.1:7220/v1/workspaces/demo/graph?view=pruned&include_assets=true'
@@ -120,14 +95,12 @@ curl 'http://127.0.0.1:7220/v1/workspaces/demo/graph?view=pruned&include_assets=
 Ask a question:
 
 ```bash
-curl -X POST http://127.0.0.1:7220/v1/workspaces/demo/query \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"What are the main findings?","include_images":true}'
+curl -X POST http://127.0.0.1:7220/v1/workspaces/demo/query   -H 'Content-Type: application/json'   -d '{"question":"What are the main findings?","mode":"mix","include_images":true}'
 ```
 
 ## Multimodal Widget Contract
 
-Graph nodes include a `display` object:
+Graph nodes can include a `display` object:
 
 ```json
 {
@@ -145,66 +118,50 @@ Graph nodes include a `display` object:
 }
 ```
 
-Canvus should render by `display.widget_type`:
+Consumers should render by `display.widget_type`:
 
-- `text`: text widget
-- `image`: image widget through `asset_url`
-- `table`: table widget through `display.html`, with image fallback when present
-- `equation`: equation widget through `display.latex`
+- `text`: text/note widget.
+- `image`: image widget through `asset_url`.
+- `table`: table HTML through `display.html`, with note/image fallback when needed.
+- `equation`: equation through `display.latex`.
 
-The service never exposes local filesystem paths in graph display payloads.
-
+The service does not expose local filesystem paths in graph display payloads. The main API rewrites RAG Core asset URLs to `/rag-core/assets/...` so web and Canvus sync can fetch media through the API facade.
 
 ## Logs
 
-For local dev, the service writes rotating process logs and per-job logs under:
+For local dev:
 
 ```text
-work-space/rag_core_service/.local-data/logs/
+apps/rag-anything/work-space/rag_core_service/.local-data/logs/
   rag_core_service.log
   jobs/<job_id>.log
 ```
 
-For Docker, the same paths live under the container `/data/logs`, mounted to:
+For Docker, logs live under container `/data/logs`, mounted to:
 
 ```text
-work-space/rag_core_service/data/logs/
-  rag_core_service.log
-  jobs/<job_id>.log
+apps/rag-anything/work-space/rag_core_service/data/logs/
 ```
 
-You can override this with `RAG_CORE_LOG_DIR` in `.env`.
-
-Useful local-dev commands:
+Useful commands:
 
 ```bash
-tail -f work-space/rag_core_service/.local-data/logs/rag_core_service.log
-tail -f work-space/rag_core_service/.local-data/logs/jobs/<job_id>.log
+tail -f apps/rag-anything/work-space/rag_core_service/.local-data/logs/rag_core_service.log
 curl http://127.0.0.1:7220/v1/jobs/<job_id>/logs
 ```
 
 ## Docker
 
-From `work-space/rag_core_service`:
+From the repository root:
 
 ```bash
-cp .env.example .env
-docker compose up --build
+docker compose -f infra/docker-compose.yml up --build rag-core
 ```
 
-API will be available at:
-
-```text
-http://127.0.0.1:7220
-```
+The standalone image build context is `apps/rag-anything` and uses `work-space/rag_core_service/Dockerfile`.
 
 ## Notes
 
-- `DELETE /documents/{document_id}` currently marks the document deleted and
-  reports `requires_rebuild=true`; physical deletion from LightRAG graph/vector
-  storage should be implemented as a rebuild job when the product needs it.
-- `PATCH /graph/nodes/{node_id}` currently persists metadata/display overrides.
-  It intentionally reports `vector_index_updated=false`.
-- Query streaming emits SSE token events after the core answer is produced. True
-  token-level model streaming can be added later without changing the endpoint.
-
+- `DELETE /documents/{document_id}` marks the document deleted and reports `requires_rebuild=true`; physical deletion from LightRAG graph/vector storage should be handled as a rebuild flow when the product needs it.
+- `PATCH /graph/nodes/{node_id}` persists metadata/display overrides and intentionally reports `vector_index_updated=false`.
+- Query streaming emits SSE token events after the core answer is produced. True token-level model streaming can be added later without changing the endpoint.
